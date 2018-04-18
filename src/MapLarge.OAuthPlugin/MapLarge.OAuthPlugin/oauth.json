@@ -1,0 +1,38 @@
+﻿{
+	"DefaultGroups": [ "nobody/nobody" ],
+	"issuer": "http://localhost:5000",
+	"audiences": [ "api" ],
+	"identity": "client_id",
+	"roleClaimType": "aud",
+	"requireHttpsDiscovery": false,
+	"GroupMembershipRequirements": {
+		"Has Access": [
+			[
+				{
+					"key": "allowedAccess",
+					"values": [ "api", "accessgroup" ],
+					"requirement": "any",
+					"caseSensitive": false
+				}
+			]
+		],
+		"SysAdmin/root": [
+			[
+				{
+					"key": "memberOf",
+					"values": [ "api" ]
+				}
+			]
+		],
+		"test1/Viewers": [
+			[
+				{
+					"key": "memberOf",
+					"values": [ "api", "otherGroup" ],
+					"requirement": "any",
+					"caseSensitive": false
+				}
+			]
+		]
+	}
+}
