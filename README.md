@@ -28,11 +28,13 @@ dotnet .\IdentityServer4Demo.dll
 
 ## Running the tests
 
-To run the tests open the solution in visual studio. Build then execute the tests by running all the tests. Results should be displayed in the Test Explorer.
-The test test 
-* ##### TestClientCredentials
+To run the tests open the solution in Visual Studio. There are nuget dependencies so ensure that the nuget packages are downloaded.
+
+Build then execute the tests by running all the tests. Results should be displayed in the Test Explorer.
+
+* #### TestClientCredentials
     tests a token issued using the grant_type : client_credentials
-* ##### TestPassword
+* #### TestPassword
      tests a token issued using the grant_type : password using a username and password.
 
 
