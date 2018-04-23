@@ -2,20 +2,31 @@
 	"DefaultGroups": [ "nobody/nobody" ],
 	"issuer": "http://localhost:5000",
 	"audiences": [ "api" ],
-	"identity": "client_id",
-	"roleClaimType": "aud",
+	"identity": [ "email", "cleint_id" ],
 	"requireHttpsDiscovery": false,
-	"GroupMembershipRequirements": {
-		"Has Access": [
-			[
-				{
-					"key": "allowedAccess",
-					"values": [ "api", "accessgroup" ],
-					"requirement": "any",
-					"caseSensitive": false
-				}
-			]
+	"systemAccessRequirements": [
+		[
+			{
+				"key": "role",
+				"values": [ "admin", "maplargeaccess" ]
+			}
 		],
+		[
+			{
+				"key": "client_role",
+				"values": [ "admin" ]
+			}
+		],
+		[
+			{
+				"key": "division",
+				"values": [ "northwest"]
+			}
+		],
+
+	],
+	"GroupMembershipRequirements": {
+
 		"SysAdmin/root": [
 			[
 				{

@@ -4,6 +4,7 @@ using MapLarge.Permission.DataStore;
 using Microsoft.IdentityModel.Protocols;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
@@ -11,6 +12,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
@@ -40,8 +42,8 @@ namespace MapLarge.OAuthPlugin {
 				throw new Exception("OAuth config invalid: mapping is missing");
 
 
-			if (string.IsNullOrWhiteSpace(_config.identity))
-				throw new Exception("OAuth config invalid: identity header is not specified");
+			if (_config.identity != null && _config.identity.Length < 1)
+				throw new Exception("OAuth config invalid: identity config setting is not specified");
 
 			//if (!_config.autoCreateAccount.enabled && (_config.defaultGroups == null || _config.defaultGroups.Length == 0))
 			//	throw new Exception("OAuth  config invalid: define defaultGroups or enable Account auto creation");
@@ -73,7 +75,7 @@ namespace MapLarge.OAuthPlugin {
 		/// <param name="expiration">lifetime for any maplarge generated token </param>
 		/// <returns>returns authorization info with user and a MapLarge token that can be used for api calls.</returns>
 		public override AuthResult ProcessLogin(HttpRequestBase request, HttpResponseBase response, int expiration) {
-			
+
 			if (!_isInitialized)
 				throw new Exception("The OAuth auth plugin is not initialized!");
 
@@ -99,41 +101,60 @@ namespace MapLarge.OAuthPlugin {
 			var accesstoken = headerPieces[1];
 
 			//validate the token
-			var userContext = ValidateToken(accesstoken).GetAwaiter().GetResult();
+			var userContext = ValidateToken(accesstoken).GetAwaiter().GetResult().ToList();
 
 			//look at the claims get user claim based off the identity key specified in config
-			string userName = userContext.Claims.FirstOrDefault(c => c.Type == _config.identity)?.Value;
+			string userName = userContext.FirstOrDefault(c => _config.identity.Contains(c.Type))?.Value;
 
 
 			string lowerUserName = userName.ToLower().Trim();
-			var groupToMlGroupMapping = new Dictionary<string, string[]>();
-			var groupsAllowedAccess = new Dictionary<string, string[]>();
-
+			
 			//here the claims would be retrieved from the token
 			//those claims would then be mapped to maplarge groups. 
 			//get the groups from the claims by the configured role claim type
 			//if role claim not set all claims are used
-			
-			string[] usersGroups = string.IsNullOrWhiteSpace(_config.roleClaimType)
-				?userContext.Claims.Select(c => c.Value).ToArray()
-				: userContext.Claims.Where(c => c.Type == _config.roleClaimType).Select(c => c.Value).ToArray();
 
-			//setup to resolve through AuthRequirements configuration
-			groupToMlGroupMapping[GROUP_MEMBERSHIP_KEY] = usersGroups;
-			groupsAllowedAccess[ALLOWED_ACCESS_KEY] = usersGroups;
+
+
+			var claimLookup = ClaimsToLookupKeys(userContext);
+
+
 
 			//are there any claims that are configured for access? if not reject user.
-			if (!CheckGroupMemberships(groupsAllowedAccess).Any())
-				return FailedAuth("User is not approved for access.", request);
+			try {
+				CheckSystemAccess(claimLookup);
+			} catch (Exception ex) {
+				return FailedAuth(ex.Message, request);
+			}			
+			//define the username in the MapLarge format if its not already an email.
+			var mlUsername = lowerUserName.Contains("@") ? lowerUserName : $"{lowerUserName}@{_config.userNameEmailDomain}";
 
 
-
-
-			//define the username in the MapLarge format
-			var mlUsername = $"{lowerUserName}@{_config.userNameEmailDomain}";
-			
 			//builds an AuthResult given the user and claim to group mapping defined in GroupRequirements definition
-			return BuildAuthResultFromUserAndGroups(mlUsername, groupToMlGroupMapping, _config.defaultGroups, request, expiration);
+			return BuildAuthResultFromUserAndGroups(mlUsername, claimLookup, _config.defaultGroups, request, expiration);
+		}
+
+
+		protected void CheckSystemAccess(Dictionary<string, string[]> groupsAllowedAccess) {
+			string error = "";
+			if (_config.systemAccessRequirements != null && _config.systemAccessRequirements.Count > 0) {
+				if (!AuthRequirement.EvaluateOr(groupsAllowedAccess, _config.systemAccessRequirements, ref error))
+					throw new Exception(string.Format("User does not meet system access requirements! ({0})", error));
+			}
+		}
+
+		private static Dictionary<string, string[]> ClaimsToLookupKeys(List<Claim> userClaims) {
+			Dictionary<string, string[]> groupsAllowedAccess = new Dictionary<string, string[]>();
+			
+			foreach (var claim in userClaims) {
+				if (!groupsAllowedAccess.ContainsKey(claim.Type))
+					groupsAllowedAccess[claim.Type] = new string[] { };
+				var tempArray = groupsAllowedAccess[claim.Type];
+				Array.Resize(ref tempArray, tempArray.Length + 1);
+				tempArray[tempArray.Length - 1] = claim.Value;
+				groupsAllowedAccess[claim.Type] = tempArray;
+			}
+			return groupsAllowedAccess;
 		}
 
 		/// <summary>
@@ -141,9 +162,10 @@ namespace MapLarge.OAuthPlugin {
 		/// </summary>
 		/// <param name="token">the token</param>
 		/// <returns>returns an instance of the validated token</returns>
-		private async Task<JwtSecurityToken> ValidateToken(string token) {
+		private async Task<List<Claim>> ValidateToken(string token) {
 			if (string.IsNullOrEmpty(token)) throw new ArgumentNullException(nameof(token));
 
+			var claims = new List<Claim>();
 			
 			//issuer config
 			var issuer = new Uri(_config.issuer);
@@ -209,8 +231,9 @@ namespace MapLarge.OAuthPlugin {
 
 			var principal = new JwtSecurityTokenHandler().ValidateToken(token, validationParameters, out var rawValidatedToken);
 			JwtSecurityToken newToken =  (JwtSecurityToken)rawValidatedToken;
+				claims.AddRange(newToken.Claims);
 			//if there is a 'sub' claim on the token query for additional claims 
-			if (principal.HasClaim(c => c.Type == "sub")) {
+			if ( principal.HasClaim("scope", "openid")) {
 				//look up user information to gather additional claims
 				
 				HttpClient httpClient = new HttpClient();
@@ -218,15 +241,19 @@ namespace MapLarge.OAuthPlugin {
 				var response = await httpClient.GetAsync(discoveryDocument.UserInfoEndpoint).ConfigureAwait(false);
 				if (response.IsSuccessStatusCode) {
 					var content = await response.Content.ReadAsStringAsync();
-					///from here take the additional claims and add to the returned token.
+					var userclaims = JsonConvert.DeserializeObject<Dictionary<string, object>>(content);
+					foreach (var c in userclaims) {
+						if(c.Value.GetType().IsArray)
+							foreach (var v in (string[])c.Value) {
+								claims.Add(new Claim(c.Key, v, ClaimValueTypes.String, issuer: newToken.Issuer));
+						}
+						claims.Add(new Claim(c.Key, c.Value.ToString(), ClaimValueTypes.String, issuer: newToken.Issuer));
+					}
 
 				} 
-
-				
-				
 			}
-			return newToken;
 
+			return claims;
 		}
 
 		/// <summary>
@@ -246,7 +273,7 @@ namespace MapLarge.OAuthPlugin {
 			public string[] audiences = null;
 
 			//the name of the claim that represents the username that will become the maplarge user
-			public string identity = null;
+			public string[] identity = null;
 
 			//controls what to validate when validating tokens
 			public ValidationOptions validationOptions = new ValidationOptions();
@@ -257,7 +284,10 @@ namespace MapLarge.OAuthPlugin {
 			//default groups all MapLarge users will have
 			public string[] defaultGroups = null;
 			
-			//rules for mapping claims to MapLarge groups as well as access
+			//rules for mapping claims to MapLarge groups 
+			public List<List<AuthRequirement>> systemAccessRequirements { get; set; }
+
+			//rules for mapping claims to MapLarge groups 
 			public Dictionary<string, List<List<AuthRequirement>>> GroupMembershipRequirements { get; set; }
 
 

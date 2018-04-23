@@ -70,31 +70,31 @@ namespace OAuthPluginIntegrationTest {
 			//newConfig.issuer = "https://demo.identityserver.io";
 			newConfig.issuer = "http://localhost:5000";
 			newConfig.audiences = new string[] { "api" };
-			newConfig.identity = "client_id";
-			newConfig.roleClaimType = "aud";
+			newConfig.identity = new string[] { "sub", "client_id" };
 			newConfig.requireHttpsDiscovery = false;
 			//this by default gives everyone access. they just may not have permissions to do anything
 			newConfig.defaultGroups = new[] { "nobody/nobody" };
+			newConfig.systemAccessRequirements = new List<List<AuthRequirement>>() {
+				new List<AuthRequirement>(){
+						new AuthRequirement { key = "role", values = {"admin", "maplargeaccess"} },
+				},
+				new List<AuthRequirement>(){
+						new AuthRequirement { key = "client_role", values = {"admin"} },
+				},
+
+				new List<AuthRequirement>(){
+						new AuthRequirement { key = "division", values = {"northwest"} }
+				}
+			};
 			newConfig.GroupMembershipRequirements = new Dictionary<string, List<List<AuthRequirement>>>() {
-				{"Has Access", new List<List<AuthRequirement>>() {
-					new List<AuthRequirement>() {
-						new AuthRequirement() {
-							key = AbsExternalAuthPlugin<plugin.OAuthPlugin.OAuthPluginConfig>.ALLOWED_ACCESS_KEY,
-							requirement = AuthRequirementType.any,
-							caseSensitive = false,
-							values = {"api", "accessrole"}
-						}
-					}
-				}},
 				{"SysAdmin/root", new List<List<AuthRequirement>>() {
 					new List<AuthRequirement>() {
-						new AuthRequirement() {
-							key = AbsExternalAuthPlugin<plugin.OAuthPlugin.OAuthPluginConfig>.GROUP_MEMBERSHIP_KEY,
-							requirement = AuthRequirementType.any,
-							caseSensitive = false,
-							values = {"api", "otherrole"}
-
-						}
+						new AuthRequirement() { key = "role", values = { "admin", "otherrole"} }
+					}
+				}},
+				{"test/viewers", new List<List<AuthRequirement>>() {
+					new List<AuthRequirement>() {
+						new AuthRequirement() { key = "role", values = { "viewer", "otherviewerrole"} }
 					}
 				}},
 
@@ -146,33 +146,56 @@ namespace OAuthPluginIntegrationTest {
 			public string expires_in;
 		}
 
-		[TestMethod]
-		public void TestClientCredentials() {
-			var values = new Dictionary<string, string>{
+		static Dictionary<string, string> client_credentials = new Dictionary<string, string>{
 				{ "grant_type" ,"client_credentials"},
 				{ "scope" ,"api"},
 				{ "client_id" ,"client"},
 				{ "client_secret" ,"secret"}
 			};
 
-			MockHttpRequest request = GetBearerToken(values);
+
+		[TestMethod]
+		public void TestClientCredentials() {
+
+
+			MockHttpRequest request = GetBearerToken(client_credentials);
 			var result = _core.Auth.ProcessLogin(request, new MockHttpResponse(), 3600);
 
 			Assert.IsTrue(result.success);
 		}
-		[TestMethod]
-		public void TestPassword() {
 
-			var values = new Dictionary<string, string>{
+		static Dictionary<string, string> passworFlow = new Dictionary<string, string>{
 				{ "grant_type" ,"password"},
-				{ "scope" ,"api email profile"},
+				{ "scope" ,"api email profile openid"},
 				{ "client_id" ,"ro.client"},
 				{ "client_secret" ,"secret"},
 				{ "username" ,"bob"},
 				{ "password" ,"bob"}
 			};
 
-			MockHttpRequest request = GetBearerToken(values);
+		static Dictionary<string, string> noacessPassworFlow = new Dictionary<string, string>{
+				{ "grant_type" ,"password"},
+				{ "scope" ,"api email profile openid"},
+				{ "client_id" ,"ro.client"},
+				{ "client_secret" ,"secret"},
+				{ "username" ,"noaccess"},
+				{ "password" ,"noaccess"}
+			};
+		[TestMethod]
+		public void TestPasswordHasNoAccess() {
+
+			MockHttpRequest request = GetBearerToken(noacessPassworFlow);
+
+			var result = _core.Auth.ProcessLogin(request, new MockHttpResponse(), 3600);
+
+			Assert.IsFalse(result.success);
+		}
+
+
+		[TestMethod]
+		public void TestPassword() {
+
+			MockHttpRequest request = GetBearerToken(passworFlow);
 
 			var result = _core.Auth.ProcessLogin(request, new MockHttpResponse(), 3600);
 
