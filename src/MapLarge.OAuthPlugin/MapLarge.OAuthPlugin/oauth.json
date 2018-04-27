@@ -2,7 +2,7 @@
 	"DefaultGroups": [ "nobody/nobody" ],
 	"issuer": "http://localhost:5000",
 	"audiences": [ "api" ],
-	"identity": [ "email", "cleint_id" ],
+	"identity": [ "email", "client_id" ],
 	"requireHttpsDiscovery": false,
 	"systemAccessRequirements": [
 		[
@@ -20,26 +20,27 @@
 		[
 			{
 				"key": "division",
-				"values": [ "northwest"]
+				"values": [ "northwest" ]
 			}
-		],
-
+		]
 	],
 	"GroupMembershipRequirements": {
 
 		"SysAdmin/root": [
 			[
 				{
-					"key": "memberOf",
-					"values": [ "api" ]
+					"key": "role",
+					"values": [ "admin", "otheradmin" ],
+					"requirement": "any",
+					"caseSensitive": false
 				}
 			]
 		],
 		"test1/Viewers": [
 			[
 				{
-					"key": "memberOf",
-					"values": [ "api", "otherGroup" ],
+					"key": "role",
+					"values": [ "viewer", "otherGroup" ],
 					"requirement": "any",
 					"caseSensitive": false
 				}

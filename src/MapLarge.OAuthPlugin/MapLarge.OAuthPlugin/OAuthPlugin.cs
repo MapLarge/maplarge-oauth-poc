@@ -117,6 +117,9 @@ namespace MapLarge.OAuthPlugin {
 
 
 			var claimLookup = ClaimsToLookupKeys(userContext);
+			//once the claims are retrived from the token and made available
+			//query the group provider to see which groups if any this user has access to.
+			claimLookup[GROUP_MEMBERSHIP_KEY] = GetGroupsFromProvider(userName);
 
 
 

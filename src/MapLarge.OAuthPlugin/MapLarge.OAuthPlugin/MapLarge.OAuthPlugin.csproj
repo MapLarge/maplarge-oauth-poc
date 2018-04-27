@@ -68,6 +68,7 @@
     <Compile Include="Base64Url.cs" />
     <Compile Include="OAuthPlugin.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="SlbGroupMembershipProvider.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="oauth.json" />
