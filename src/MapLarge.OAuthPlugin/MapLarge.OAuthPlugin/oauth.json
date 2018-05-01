@@ -1,4 +1,7 @@
 ﻿{
+	"entitlementEndpoint": "http://nowhere",
+	"apiKey": "djd",
+	"tenentId": "id",
 	"DefaultGroups": [ "nobody/nobody" ],
 	"issuer": "http://localhost:5000",
 	"audiences": [ "api" ],
@@ -7,8 +10,8 @@
 	"systemAccessRequirements": [
 		[
 			{
-				"key": "role",
-				"values": [ "admin", "maplargeaccess" ]
+				"key": "memberof",
+				"values": [ "admin", "data.ihs.viewer" ]
 			}
 		],
 		[
@@ -39,8 +42,8 @@
 		"test1/Viewers": [
 			[
 				{
-					"key": "role",
-					"values": [ "viewer", "otherGroup" ],
+					"key": "memberof",
+					"values": [ "viewer", "data.ihs.viewer" ],
 					"requirement": "any",
 					"caseSensitive": false
 				}

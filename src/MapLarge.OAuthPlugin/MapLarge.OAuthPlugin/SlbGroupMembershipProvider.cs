@@ -8,6 +8,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Threading.Tasks;
+using static MapLarge.OAuthPlugin.OAuthPlugin;
 
 namespace MapLarge.OAuthPlugin {
 	public class SlbGroupMembershipProvider : IGroupMembershipProvider {
@@ -30,12 +31,14 @@ namespace MapLarge.OAuthPlugin {
 
 
 			//Query params key:APIkey
-			HttpClient httpClient = new HttpClient();
-			httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", access_token);
+			HttpClient httpClient = HttpClientManager.Instance.HttpClient;
+			var requestMessage = new HttpRequestMessage(HttpMethod.Get, $"{_config.entitlementEndpoint}?apikey={_config.apiKey}");
+			requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", access_token);
 			//slb-account-id:tenant1
-			httpClient.DefaultRequestHeaders.Add("slb-account-id", _config.tenentId);
+			requestMessage.Headers.Add("slb-account-id", _config.tenentId);
+
 			
-			var response = httpClient.GetAsync($"{_config.entitlementEndpoint}?apikey={_config.apiKey}").GetAwaiter().GetResult();
+			var response = httpClient.SendAsync(requestMessage).GetAwaiter().GetResult();
 			if (response.IsSuccessStatusCode) {
 				var content = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
 				var usergroups= JsonConvert.DeserializeObject<EntitlementResponse>(content);
@@ -60,7 +63,7 @@ namespace MapLarge.OAuthPlugin {
 		}
 	}
 
-	public class GroupProviderConfig {
+	public class GroupProviderConfig: OAuthPluginConfig {
 		public string entitlementEndpoint;
 		public string apiKey;
 		public string tenentId;

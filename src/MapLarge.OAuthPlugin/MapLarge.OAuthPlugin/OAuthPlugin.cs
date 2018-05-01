@@ -101,14 +101,18 @@ namespace MapLarge.OAuthPlugin {
 			var accesstoken = headerPieces[1];
 
 			//validate the token
-			var userContext = ValidateToken(accesstoken).GetAwaiter().GetResult().ToList();
+			List<Claim> userContext = null;
+				if(_config.externalValidationOptions != null && !string.IsNullOrWhiteSpace(_config.externalValidationOptions.validationUri))
+					userContext = ValidateTokenExternal(accesstoken).GetAwaiter().GetResult().ToList();
+				else
+					userContext = ValidateTokenInternal(accesstoken).GetAwaiter().GetResult().ToList();
 
 			//look at the claims get user claim based off the identity key specified in config
 			string userName = userContext.FirstOrDefault(c => _config.identity.Contains(c.Type))?.Value;
 
 
 			string lowerUserName = userName.ToLower().Trim();
-			
+
 			//here the claims would be retrieved from the token
 			//those claims would then be mapped to maplarge groups. 
 			//get the groups from the claims by the configured role claim type
@@ -119,7 +123,7 @@ namespace MapLarge.OAuthPlugin {
 			var claimLookup = ClaimsToLookupKeys(userContext);
 			//once the claims are retrived from the token and made available
 			//query the group provider to see which groups if any this user has access to.
-			claimLookup[GROUP_MEMBERSHIP_KEY] = GetGroupsFromProvider(userName);
+			claimLookup[GROUP_MEMBERSHIP_KEY] = GetGroupsFromProvider(accesstoken);
 
 
 
@@ -128,7 +132,7 @@ namespace MapLarge.OAuthPlugin {
 				CheckSystemAccess(claimLookup);
 			} catch (Exception ex) {
 				return FailedAuth(ex.Message, request);
-			}			
+			}
 			//define the username in the MapLarge format if its not already an email.
 			var mlUsername = lowerUserName.Contains("@") ? lowerUserName : $"{lowerUserName}@{_config.userNameEmailDomain}";
 
@@ -148,7 +152,7 @@ namespace MapLarge.OAuthPlugin {
 
 		private static Dictionary<string, string[]> ClaimsToLookupKeys(List<Claim> userClaims) {
 			Dictionary<string, string[]> groupsAllowedAccess = new Dictionary<string, string[]>();
-			
+
 			foreach (var claim in userClaims) {
 				if (!groupsAllowedAccess.ContainsKey(claim.Type))
 					groupsAllowedAccess[claim.Type] = new string[] { };
@@ -160,20 +164,53 @@ namespace MapLarge.OAuthPlugin {
 			return groupsAllowedAccess;
 		}
 
-		/// <summary>
-		/// validates a jwtToken based off the options defined in config.
-		/// </summary>
-		/// <param name="token">the token</param>
-		/// <returns>returns an instance of the validated token</returns>
-		private async Task<List<Claim>> ValidateToken(string token) {
+		private async Task<List<Claim>> ValidateTokenExternal(string token) {
 			if (string.IsNullOrEmpty(token)) throw new ArgumentNullException(nameof(token));
 
 			var claims = new List<Claim>();
-			
+			var options = _config.externalValidationOptions;
+			HttpClient httpClient = HttpClientManager.Instance.HttpClient;
+			var body = new {
+				options.Referer,
+				options.clientid,
+				options.audiences,
+				stoken = token
+			};
+			var data = new StringContent(JsonConvert.SerializeObject(body), Encoding.UTF8, "application/json");
+			data.Headers.Add("x-api-key", "=myKey");
+			var response = await httpClient.PostAsync(_config.externalValidationOptions.validationUri, data).ConfigureAwait(false);
+			if (response.IsSuccessStatusCode) {
+				var content = await response.Content.ReadAsStringAsync();
+				var userclaims = JsonConvert.DeserializeObject<Dictionary<string, object>>(content);
+				foreach (var c in userclaims) {
+					if (c.Value.GetType().IsArray)
+						foreach (var v in (string[])c.Value) {
+							claims.Add(new Claim(c.Key, v, ClaimValueTypes.String));
+						}
+					claims.Add(new Claim(c.Key, c.Value.ToString(), ClaimValueTypes.String));
+				}
+
+			}
+
+			return claims;
+
+		} 
+
+			/// <summary>
+			/// validates a jwtToken based off the options defined in config.
+			/// </summary>
+			/// <param name="token">the token</param>
+			/// <returns>returns an instance of the validated token</returns>
+			private async Task<List<Claim>> ValidateTokenInternal(string token) {
+			if (string.IsNullOrEmpty(token)) throw new ArgumentNullException(nameof(token));
+
+			var claims = new List<Claim>();
+
+
 			//issuer config
 			var issuer = new Uri(_config.issuer);
 
-			
+
 			//be default make the discovery url the issuer + OAUTH spec https://tools.ietf.org/html/draft-ietf-oauth-discovery-07#section-3
 			var discovery = new Uri(issuer, ".well-known/openid-configuration");
 
@@ -185,10 +222,10 @@ namespace MapLarge.OAuthPlugin {
 				discovery = new Uri(issuer, _config.discoveryUri);
 
 
-			
+
 			var configurationManager = new ConfigurationManager<OpenIdConnectConfiguration>(discovery.AbsoluteUri,
 				new OpenIdConnectConfigurationRetriever(),
-				new HttpDocumentRetriever { RequireHttps = _config.requireHttpsDiscovery }); 
+				new HttpDocumentRetriever { RequireHttps = _config.requireHttpsDiscovery });
 
 			//get the public keys from the discovery endpoint
 			//this could be cached to avoid excessive lookup
@@ -233,29 +270,29 @@ namespace MapLarge.OAuthPlugin {
 			};
 
 			var principal = new JwtSecurityTokenHandler().ValidateToken(token, validationParameters, out var rawValidatedToken);
-			JwtSecurityToken newToken =  (JwtSecurityToken)rawValidatedToken;
-				claims.AddRange(newToken.Claims);
+			JwtSecurityToken newToken = (JwtSecurityToken)rawValidatedToken;
+			claims.AddRange(newToken.Claims);
 			//if there is a 'sub' claim on the token query for additional claims 
-			if ( principal.HasClaim("scope", "openid")) {
+			if (principal.HasClaim("scope", "openid") && _config.enableUserInfoLookup) {
 				//look up user information to gather additional claims
-				
-				HttpClient httpClient = new HttpClient();
-				httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-				var response = await httpClient.GetAsync(discoveryDocument.UserInfoEndpoint).ConfigureAwait(false);
+
+				HttpClient httpClient = HttpClientManager.Instance.HttpClient;
+				var requestMessage = new HttpRequestMessage(HttpMethod.Get, discoveryDocument.UserInfoEndpoint);
+				requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+				var response = await httpClient.SendAsync(requestMessage).ConfigureAwait(false);
 				if (response.IsSuccessStatusCode) {
 					var content = await response.Content.ReadAsStringAsync();
 					var userclaims = JsonConvert.DeserializeObject<Dictionary<string, object>>(content);
 					foreach (var c in userclaims) {
-						if(c.Value.GetType().IsArray)
+						if (c.Value.GetType().IsArray)
 							foreach (var v in (string[])c.Value) {
 								claims.Add(new Claim(c.Key, v, ClaimValueTypes.String, issuer: newToken.Issuer));
-						}
+							}
 						claims.Add(new Claim(c.Key, c.Value.ToString(), ClaimValueTypes.String, issuer: newToken.Issuer));
 					}
 
-				} 
+				}
 			}
-
 			return claims;
 		}
 
@@ -279,7 +316,8 @@ namespace MapLarge.OAuthPlugin {
 			public string[] identity = null;
 
 			//controls what to validate when validating tokens
-			public ValidationOptions validationOptions = new ValidationOptions();
+			public InternalValidationOptions validationOptions = new InternalValidationOptions();
+			public ExternalValidationOptions externalValidationOptions = null;
 
 			//the claimtype to use for roles/groups
 			public string roleClaimType = null;
@@ -299,7 +337,17 @@ namespace MapLarge.OAuthPlugin {
 			public string userNameEmailDomain = "ml.oauth";
 			public bool allowLogOut = false;
 
-			public class ValidationOptions {
+			public bool enableUserInfoLookup = false;
+
+			public class ExternalValidationOptions {
+				public string validationUri;
+				public string Referer;
+				public string apiKey;
+				public string clientid;
+				public string audiences;
+			}
+
+				public class InternalValidationOptions {
 				public bool validateIssuer = true;
 				public bool ValidateIssuerSigningKey = true;
 				public bool ValidateLifetime = true;
@@ -308,7 +356,7 @@ namespace MapLarge.OAuthPlugin {
 
 			public void InitializeDefault() {
 				this.defaultGroups = new string[] { "nobody/nobody" };
-				this.validationOptions = new ValidationOptions();
+				this.validationOptions = new InternalValidationOptions();
 			}
 		}
 
