@@ -7,6 +7,13 @@
 	"audiences": [ "api" ],
 	"identity": [ "email", "client_id" ],
 	"requireHttpsDiscovery": false,
+	"externalValidationOptions": {
+		"validationUri": "http://slb/validate",
+		"Referer":  "localhost",
+		"apiKey" "=apikey",
+		"clientid": "client-id",
+		"audiences":  "aud1,aud2"
+	},
 	"systemAccessRequirements": [
 		[
 			{
