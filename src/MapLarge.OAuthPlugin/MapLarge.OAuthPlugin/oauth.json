@@ -1,0 +1,60 @@
+﻿{
+	"entitlementEndpoint": "http://nowhere",
+	"apiKey": "djd",
+	"tenentId": "id",
+	"DefaultGroups": [ "nobody/nobody" ],
+	"issuer": "http://localhost:5000",
+	"audiences": [ "api" ],
+	"identity": [ "email", "client_id" ],
+	"requireHttpsDiscovery": false,
+	"externalValidationOptions": {
+		"validationUri": "http://slb/validate",
+		"Referer":  "localhost",
+		"apiKey" "=apikey",
+		"clientid": "client-id",
+		"audiences":  "aud1,aud2"
+	},
+	"systemAccessRequirements": [
+		[
+			{
+				"key": "memberof",
+				"values": [ "admin", "data.ihs.viewer" ]
+			}
+		],
+		[
+			{
+				"key": "client_role",
+				"values": [ "admin" ]
+			}
+		],
+		[
+			{
+				"key": "division",
+				"values": [ "northwest" ]
+			}
+		]
+	],
+	"GroupMembershipRequirements": {
+
+		"SysAdmin/root": [
+			[
+				{
+					"key": "role",
+					"values": [ "admin", "otheradmin" ],
+					"requirement": "any",
+					"caseSensitive": false
+				}
+			]
+		],
+		"test1/Viewers": [
+			[
+				{
+					"key": "memberof",
+					"values": [ "viewer", "data.ihs.viewer" ],
+					"requirement": "any",
+					"caseSensitive": false
+				}
+			]
+		]
+	}
+}
