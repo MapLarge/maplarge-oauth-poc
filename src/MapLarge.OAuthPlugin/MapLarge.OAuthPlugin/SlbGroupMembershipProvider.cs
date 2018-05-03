@@ -32,22 +32,24 @@ namespace MapLarge.OAuthPlugin {
 
 			//Query params key:APIkey
 			HttpClient httpClient = HttpClientManager.Instance.HttpClient;
-			var requestMessage = new HttpRequestMessage(HttpMethod.Get, $"{_config.entitlementEndpoint}?apikey={_config.apiKey}");
-			requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", access_token);
-			//slb-account-id:tenant1
-			requestMessage.Headers.Add("slb-account-id", _config.tenentId);
+			using (var requestMessage = new HttpRequestMessage(HttpMethod.Get, $"{_config.entitlementEndpoint}?apikey={_config.apiKey}")) {
 
-			
-			var response = httpClient.SendAsync(requestMessage).GetAwaiter().GetResult();
-			if (response.IsSuccessStatusCode) {
-				var content = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
-				var usergroups= JsonConvert.DeserializeObject<EntitlementResponse>(content);
-				//process the group response here.
-				//for this example use return the name property
-				return usergroups.groups.Select(g => g.name).ToArray();
+				requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", access_token);
+				//slb-account-id:tenant1
+				requestMessage.Headers.Add("slb-account-id", _config.tenentId);
+
+
+				using (var response = httpClient.SendAsync(requestMessage).GetAwaiter().GetResult()) {
+					if (response.IsSuccessStatusCode) {
+						var content = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+						var usergroups = JsonConvert.DeserializeObject<EntitlementResponse>(content);
+						//process the group response here.
+						//for this example use return the name property
+						return usergroups.groups.Select(g => g.name).ToArray();
+					} else
+						throw new Exception($"The Slb entitlement service returned an error: {response.StatusCode} {response.ReasonPhrase}");
+				}
 			}
-			else
-				throw new Exception($"The Slb entitlement service returned an error: {response.StatusCode} {response.ReasonPhrase}");
 		}
 
 		public void Initialize(string configFilePath) {
