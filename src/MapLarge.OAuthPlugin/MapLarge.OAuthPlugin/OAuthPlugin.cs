@@ -186,7 +186,7 @@ namespace MapLarge.OAuthPlugin {
 				stoken = token
 			};
 			var data = new StringContent(JsonConvert.SerializeObject(body), Encoding.UTF8, "application/json");
-			data.Headers.Add("x-api-key", "=myKey");
+			data.Headers.Add("x-api-key", _config.externalValidationOptions.apiKey);
 			var response = await httpClient.PostAsync(_config.externalValidationOptions.validationUri, data).ConfigureAwait(false);
 			if (response.IsSuccessStatusCode) {
 				var content = await response.Content.ReadAsStringAsync();

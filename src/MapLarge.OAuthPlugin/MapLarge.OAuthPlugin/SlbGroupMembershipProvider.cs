@@ -24,15 +24,13 @@ namespace MapLarge.OAuthPlugin {
 			if (!_isInitialized)
 				throw new Exception("The group membership provider has not been properly initialized!");
 
-			// todo: pass in original user name header, not maplarge email address
-			// will make a difference for uses with special characters in the name (like a .)
 			if (string.IsNullOrWhiteSpace(access_token))
 				throw new ArgumentException("The access_token cannot be blank or null", nameof(access_token));
 
 
 			//Query params key:APIkey
 			HttpClient httpClient = HttpClientManager.Instance.HttpClient;
-			using (var requestMessage = new HttpRequestMessage(HttpMethod.Get, $"{_config.entitlementEndpoint}?apikey={_config.apiKey}")) {
+			using (var requestMessage = new HttpRequestMessage(HttpMethod.Get, $"{_config.entitlementEndpoint}?key={_config.apiKey}")) {
 
 				requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", access_token);
 				//slb-account-id:tenant1
